@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.0"
+objc2-core-foundation = { version = "0.3.0", features = ["std", "CFBase", "CFString", "CFBundle", "CFCGTypes", "CFBase"] }
+objc2-foundation = { version = "0.3.0", features = ["std", "NSArray", "NSThread"] }
+objc2-app-kit = { version = "0.3.0", features = ["std", "objc2-core-foundation", "NSApplication", "NSResponder", "NSView", "NSWindow"] }
+dispatch2 = { version = "0.2.0", default-features = false, features = ["std", "objc2"] }
+block2 = { version = "0.6.0", default-features = false }

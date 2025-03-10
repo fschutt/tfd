@@ -231,9 +231,9 @@ pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
     None
 }
 
-pub enum DefaultColorValue<'a> {
-    Hex(&'a str),
-    RGB(&'a [u8; 3]),
+pub enum DefaultColorValue {
+    Hex(String),
+    RGB([u8; 3]),
 }
 
 pub fn color_chooser_dialog(title: &str, default: DefaultColorValue)
@@ -286,10 +286,4 @@ fn hex_to_rgb(hex: &str) -> [u8; 3] {
 
 fn rgb_to_hex(rgb: &[u8; 3]) -> String {
     format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
-}
-
-#[test]
-fn test() {
-    let s = color_chooser_dialog("Test", DefaultColorValue::RGB(&[0,0,0]));
-    println!("{s:#?}");
 }
