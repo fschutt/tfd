@@ -1,9 +1,9 @@
 use super::*;
-use std::ptr;
 use std::ffi::{OsStr, OsString};
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::iter::once;
 use std::mem;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::ptr;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -119,112 +119,127 @@ fn from_wstring(s: &[u16]) -> String {
 pub fn message_box_ok(title: &str, message: &str, icon: MessageBoxIcon) {
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
-    
+
     let icon_flag = match icon {
         MessageBoxIcon::Info => MB_ICONINFORMATION,
         MessageBoxIcon::Warning => MB_ICONWARNING,
         MessageBoxIcon::Error => MB_ICONERROR,
         MessageBoxIcon::Question => MB_ICONQUESTION,
     };
-    
+
     unsafe {
         MessageBoxW(
             ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
-            MB_OK | icon_flag
+            MB_OK | icon_flag,
         );
     }
 }
 
-pub fn message_box_ok_cancel(title: &str, message: &str, icon: MessageBoxIcon, default: OkCancel) -> OkCancel {
+pub fn message_box_ok_cancel(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: OkCancel,
+) -> OkCancel {
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
-    
+
     let icon_flag = match icon {
         MessageBoxIcon::Info => MB_ICONINFORMATION,
         MessageBoxIcon::Warning => MB_ICONWARNING,
         MessageBoxIcon::Error => MB_ICONERROR,
         MessageBoxIcon::Question => MB_ICONQUESTION,
     };
-    
+
     let default_button = match default {
         OkCancel::Ok => MB_DEFBUTTON1,
         OkCancel::Cancel => MB_DEFBUTTON2,
     };
-    
+
     let result = unsafe {
         MessageBoxW(
             ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
-            MB_OKCANCEL | icon_flag | default_button
+            MB_OKCANCEL | icon_flag | default_button,
         )
     };
-    
+
     match result {
         IDOK => OkCancel::Ok,
         _ => OkCancel::Cancel,
     }
 }
 
-pub fn message_box_yes_no(title: &str, message: &str, icon: MessageBoxIcon, default: YesNo) -> YesNo {
+pub fn message_box_yes_no(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: YesNo,
+) -> YesNo {
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
-    
+
     let icon_flag = match icon {
         MessageBoxIcon::Info => MB_ICONINFORMATION,
         MessageBoxIcon::Warning => MB_ICONWARNING,
         MessageBoxIcon::Error => MB_ICONERROR,
         MessageBoxIcon::Question => MB_ICONQUESTION,
     };
-    
+
     let default_button = match default {
         YesNo::Yes => MB_DEFBUTTON1,
         YesNo::No => MB_DEFBUTTON2,
     };
-    
+
     let result = unsafe {
         MessageBoxW(
             ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
-            MB_YESNO | icon_flag | default_button
+            MB_YESNO | icon_flag | default_button,
         )
     };
-    
+
     match result {
         IDYES => YesNo::Yes,
         _ => YesNo::No,
     }
 }
 
-pub fn message_box_yes_no_cancel(title: &str, message: &str, icon: MessageBoxIcon, default: YesNoCancel) -> YesNoCancel {
+pub fn message_box_yes_no_cancel(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: YesNoCancel,
+) -> YesNoCancel {
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
-    
+
     let icon_flag = match icon {
         MessageBoxIcon::Info => MB_ICONINFORMATION,
         MessageBoxIcon::Warning => MB_ICONWARNING,
         MessageBoxIcon::Error => MB_ICONERROR,
         MessageBoxIcon::Question => MB_ICONQUESTION,
     };
-    
+
     let default_button = match default {
         YesNoCancel::Yes => MB_DEFBUTTON1,
         YesNoCancel::No => MB_DEFBUTTON2,
         YesNoCancel::Cancel => MB_DEFBUTTON3,
     };
-    
+
     let result = unsafe {
         MessageBoxW(
             ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
-            MB_YESNOCANCEL | icon_flag | default_button
+            MB_YESNOCANCEL | icon_flag | default_button,
         )
     };
-    
+
     match result {
         IDYES => YesNoCancel::Yes,
         IDNO => YesNoCancel::No,
@@ -236,21 +251,26 @@ pub fn input_box(title: &str, message: &str, default: Option<&str>) -> Option<St
     // For simplicity, we'll use a MessageBox to show the message and then create a small
     // Windows Forms app to get the input. In a real implementation, you'd use a proper dialog box.
     message_box_ok(title, message, MessageBoxIcon::Info);
-    
+
     // Simplified implementation - in a full implementation, you'd use a proper dialog with input field
     Some(default.unwrap_or("").to_string())
 }
 
-pub fn save_file_dialog(title: &str, path: &str, filter_patterns: &[&str], description: &str) -> Option<String> {
+pub fn save_file_dialog(
+    title: &str,
+    path: &str,
+    filter_patterns: &[&str],
+    description: &str,
+) -> Option<String> {
     let w_title = to_wstring(title);
     let w_path = to_wstring(path);
-    
+
     // Build filter string
     let mut filter = String::new();
     if !description.is_empty() {
         filter.push_str(description);
         filter.push('\0');
-        
+
         for (i, pattern) in filter_patterns.iter().enumerate() {
             if i > 0 {
                 filter.push(';');
@@ -259,11 +279,11 @@ pub fn save_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
         }
         filter.push('\0');
     }
-    
+
     // Add "All Files" filter
     filter.push_str("All Files\0*.*\0\0");
     let w_filter = to_wstring(&filter);
-    
+
     // Prepare buffer for file name
     let mut buffer = vec![0u16; 260]; // MAX_PATH
     if !path.is_empty() {
@@ -271,18 +291,22 @@ pub fn save_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
         let len = path_w.len().min(buffer.len() - 1);
         buffer[..len].copy_from_slice(&path_w[..len]);
     }
-    
+
     let mut ofn: OPENFILENAMEW = unsafe { mem::zeroed() };
     ofn.lStructSize = mem::size_of::<OPENFILENAMEW>() as u32;
     ofn.hwndOwner = ptr::null_mut();
-    ofn.lpstrFilter = if filter_patterns.is_empty() { ptr::null() } else { w_filter.as_ptr() };
+    ofn.lpstrFilter = if filter_patterns.is_empty() {
+        ptr::null()
+    } else {
+        w_filter.as_ptr()
+    };
     ofn.lpstrFile = buffer.as_mut_ptr();
     ofn.nMaxFile = buffer.len() as u32;
     ofn.lpstrTitle = w_title.as_ptr();
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    
+
     let result = unsafe { GetSaveFileNameW(&mut ofn) };
-    
+
     if result != 0 {
         Some(from_wstring(&buffer))
     } else {
@@ -290,17 +314,22 @@ pub fn save_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
     }
 }
 
-pub fn open_file_dialog(title: &str, path: &str, filter_patterns: &[&str], description: &str, 
-                    allow_multi: bool) -> Option<Vec<String>> {
+pub fn open_file_dialog(
+    title: &str,
+    path: &str,
+    filter_patterns: &[&str],
+    description: &str,
+    allow_multi: bool,
+) -> Option<Vec<String>> {
     let w_title = to_wstring(title);
     let w_path = to_wstring(path);
-    
+
     // Build filter string
     let mut filter = String::new();
     if !description.is_empty() {
         filter.push_str(description);
         filter.push('\0');
-        
+
         for (i, pattern) in filter_patterns.iter().enumerate() {
             if i > 0 {
                 filter.push(';');
@@ -309,11 +338,11 @@ pub fn open_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
         }
         filter.push('\0');
     }
-    
+
     // Add "All Files" filter
     filter.push_str("All Files\0*.*\0\0");
     let w_filter = to_wstring(&filter);
-    
+
     // Prepare buffer for file name(s)
     let mut buffer = vec![0u16; 32768]; // Large buffer for multiple files
     if !path.is_empty() {
@@ -321,31 +350,35 @@ pub fn open_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
         let len = path_w.len().min(buffer.len() - 1);
         buffer[..len].copy_from_slice(&path_w[..len]);
     }
-    
+
     let mut ofn: OPENFILENAMEW = unsafe { mem::zeroed() };
     ofn.lStructSize = mem::size_of::<OPENFILENAMEW>() as u32;
     ofn.hwndOwner = ptr::null_mut();
-    ofn.lpstrFilter = if filter_patterns.is_empty() { ptr::null() } else { w_filter.as_ptr() };
+    ofn.lpstrFilter = if filter_patterns.is_empty() {
+        ptr::null()
+    } else {
+        w_filter.as_ptr()
+    };
     ofn.lpstrFile = buffer.as_mut_ptr();
     ofn.nMaxFile = buffer.len() as u32;
     ofn.lpstrTitle = w_title.as_ptr();
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_EXPLORER | OFN_NOCHANGEDIR;
-    
+
     if allow_multi {
         ofn.Flags |= OFN_ALLOWMULTISELECT;
     }
-    
+
     let result = unsafe { GetOpenFileNameW(&mut ofn) };
-    
+
     if result != 0 {
         if allow_multi {
             let mut files = Vec::new();
             let mut start = 0;
-            
+
             // First part is the directory
             let dir = from_wstring(&buffer[start..]);
             start += dir.len() + 1;
-            
+
             if buffer[start] == 0 {
                 // Only one file selected
                 files.push(dir);
@@ -356,14 +389,14 @@ pub fn open_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
                     if filename.is_empty() {
                         break;
                     }
-                    
+
                     let path = PathBuf::from(&dir).join(filename);
                     files.push(path.to_string_lossy().into_owned());
-                    
+
                     start += filename.len() + 1;
                 }
             }
-            
+
             Some(files)
         } else {
             Some(vec![from_wstring(&buffer)])
@@ -375,19 +408,19 @@ pub fn open_file_dialog(title: &str, path: &str, filter_patterns: &[&str], descr
 
 pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
     let w_title = to_wstring(title);
-    
+
     let mut bi: BROWSEINFOW = unsafe { mem::zeroed() };
     bi.hwndOwner = ptr::null_mut();
     bi.lpszTitle = w_title.as_ptr();
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    
+
     let pidl = unsafe { SHBrowseForFolderW(&mut bi) };
-    
+
     if !pidl.is_null() {
         let mut buffer = vec![0u16; 260]; // MAX_PATH
         let result = unsafe { SHGetPathFromIDListW(pidl, buffer.as_mut_ptr()) };
         unsafe { CoTaskMemFree(pidl) };
-        
+
         if result != 0 {
             Some(from_wstring(&buffer))
         } else {
@@ -400,35 +433,35 @@ pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
 
 pub fn color_chooser_dialog(title: &str, default: DefaultColorValue) -> Option<(String, [u8; 3])> {
     let w_title = to_wstring(title);
-    
+
     let default_rgb = match default {
         DefaultColorValue::Hex(hex) => super::hex_to_rgb(hex),
         DefaultColorValue::RGB(rgb) => *rgb,
     };
-    
-    let rgb_value = ((default_rgb[0] as u32) | 
-                        ((default_rgb[1] as u32) << 8) | 
-                        ((default_rgb[2] as u32) << 16));
-    
+
+    let rgb_value = ((default_rgb[0] as u32)
+        | ((default_rgb[1] as u32) << 8)
+        | ((default_rgb[2] as u32) << 16));
+
     let mut custom_colors = [0u32; 16];
-    
+
     let mut cc: CHOOSECOLORW = unsafe { mem::zeroed() };
     cc.lStructSize = mem::size_of::<CHOOSECOLORW>() as u32;
     cc.hwndOwner = ptr::null_mut();
     cc.rgbResult = rgb_value;
     cc.lpCustColors = custom_colors.as_mut_ptr();
     cc.Flags = CC_RGBINIT | CC_FULLOPEN | CC_ANYCOLOR;
-    
+
     let result = unsafe { ChooseColorW(&mut cc) };
-    
+
     if result != 0 {
         let r = (cc.rgbResult & 0xFF) as u8;
         let g = ((cc.rgbResult >> 8) & 0xFF) as u8;
         let b = ((cc.rgbResult >> 16) & 0xFF) as u8;
-        
+
         let rgb = [r, g, b];
         let hex = super::rgb_to_hex(&rgb);
-        
+
         Some((hex, rgb))
     } else {
         None

@@ -9,18 +9,18 @@
 //! untrusted input, for example as dialog title or message, can in the worst
 //! case lead to execution of arbitrary commands.
 
+use std::env;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
-use std::env;
 
 // Platform-specific modules
-#[cfg(target_os = "windows")]
-mod windows;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(all(unix, not(target_os = "macos")))]
 mod unix;
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageBoxIcon {
@@ -78,7 +78,12 @@ pub fn message_box_ok(title: &str, message: &str, icon: MessageBoxIcon) {
     }
 }
 
-pub fn message_box_ok_cancel(title: &str, message: &str, icon: MessageBoxIcon, default: OkCancel) -> OkCancel {
+pub fn message_box_ok_cancel(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: OkCancel,
+) -> OkCancel {
     #[cfg(target_os = "windows")]
     {
         return windows::message_box_ok_cancel(title, message, icon, default);
@@ -95,7 +100,12 @@ pub fn message_box_ok_cancel(title: &str, message: &str, icon: MessageBoxIcon, d
     OkCancel::Cancel
 }
 
-pub fn message_box_yes_no(title: &str, message: &str, icon: MessageBoxIcon, default: YesNo) -> YesNo {
+pub fn message_box_yes_no(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: YesNo,
+) -> YesNo {
     #[cfg(target_os = "windows")]
     {
         return windows::message_box_yes_no(title, message, icon, default);
@@ -112,7 +122,12 @@ pub fn message_box_yes_no(title: &str, message: &str, icon: MessageBoxIcon, defa
     YesNo::No
 }
 
-pub fn message_box_yes_no_cancel(title: &str, message: &str, icon: MessageBoxIcon, default: YesNoCancel) -> YesNoCancel {
+pub fn message_box_yes_no_cancel(
+    title: &str,
+    message: &str,
+    icon: MessageBoxIcon,
+    default: YesNoCancel,
+) -> YesNoCancel {
     #[cfg(target_os = "windows")]
     {
         return windows::message_box_yes_no_cancel(title, message, icon, default);
@@ -167,10 +182,12 @@ pub fn save_file_dialog(title: &str, path: &str) -> Option<String> {
     save_file_dialog_with_filter(title, path, &[], "")
 }
 
-pub fn save_file_dialog_with_filter(title: &str,
-                                    path: &str,
-                                    filter_patterns: &[&str],
-                                    description: &str) -> Option<String> {
+pub fn save_file_dialog_with_filter(
+    title: &str,
+    path: &str,
+    filter_patterns: &[&str],
+    description: &str,
+) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
         return windows::save_file_dialog(title, path, filter_patterns, description);
@@ -187,17 +204,21 @@ pub fn save_file_dialog_with_filter(title: &str,
     None
 }
 
-pub fn open_file_dialog(title: &str,
-                        path: &str,
-                        filter: Option<(&[&str], &str)>) -> Option<String> {
+pub fn open_file_dialog(
+    title: &str,
+    path: &str,
+    filter: Option<(&[&str], &str)>,
+) -> Option<String> {
     open_file_dialog_multi(title, path, filter).and_then(|v| v.into_iter().next())
 }
 
-pub fn open_file_dialog_multi(title: &str,
-                              path: &str,
-                              filter: Option<(&[&str], &str)>) -> Option<Vec<String>> {
+pub fn open_file_dialog_multi(
+    title: &str,
+    path: &str,
+    filter: Option<(&[&str], &str)>,
+) -> Option<Vec<String>> {
     let (patterns, description) = filter.unwrap_or((&[], ""));
-    
+
     #[cfg(target_os = "windows")]
     {
         return windows::open_file_dialog(title, path, patterns, description, true);
@@ -236,8 +257,7 @@ pub enum DefaultColorValue {
     RGB([u8; 3]),
 }
 
-pub fn color_chooser_dialog(title: &str, default: DefaultColorValue)
-                            -> Option<(String, [u8; 3])> {
+pub fn color_chooser_dialog(title: &str, default: DefaultColorValue) -> Option<(String, [u8; 3])> {
     #[cfg(target_os = "windows")]
     {
         return windows::color_chooser_dialog(title, default);
