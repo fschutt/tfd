@@ -5,25 +5,17 @@ use std::mem;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 use std::ptr;
-
-// Add these imports at the top of your windows.rs file
-use ::windows::{
-    core::{HSTRING, Result as WinResult},
-    Data::Xml::Dom::{XmlDocument, XmlElement},
-    Foundation::Uri,
-    UI::Notifications::{
-        ToastNotification, ToastNotificationManager, ToastTemplateType, 
-    },
-    Win32::{
-        Foundation::HWND,
-        System::{
-            Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
-            SystemInformation::GetVersionExW,
-            Registry::GetCurrentProcessExplicitAppUserModelID
-        },
-        UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_OK, IDOK},
-    },
-};
+use ::windows::core::HSTRING;
+use ::windows::Data::Xml::Dom::XmlDocument;
+use ::windows::Win32::UI::Shell::GetCurrentProcessExplicitAppUserModelID;
+use ::windows::Win32::System::Com::CoUninitialize;
+use ::windows::UI::Notifications::ToastNotification;
+use ::windows::UI::Notifications::ToastNotificationManager;
+use ::windows::Win32::System::Com::COINIT_MULTITHREADED;
+use ::windows::Win32::System::Com::CoInitializeEx;
+use ::windows::Win32::Foundation::HWND;
+use ::windows::UI::Notifications::ToastTemplateType;
+use ::windows::Win32::System::SystemInformation::GetVersionExW;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -101,7 +93,7 @@ struct NOTIFYICONDATAW {
     hBalloonIcon: *mut std::ffi::c_void,
 }
 
-type HWND = *mut std::ffi::c_void;
+// type HWND = *mut std::ffi::c_void;
 type HINSTANCE = *mut std::ffi::c_void;
 type LPARAM = isize;
 type PIDLIST_ABSOLUTE = *mut std::ffi::c_void;
@@ -147,6 +139,7 @@ const IDCANCEL: i32 = 2;
 const IDYES: i32 = 6;
 const IDNO: i32 = 7;
 
+/* */
 extern "system" {
     fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, utype: u32) -> i32;
     fn GetOpenFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
@@ -186,7 +179,7 @@ pub fn message_box_ok(msg_box: &MessageBox) {
 
     unsafe {
         MessageBoxW(
-            ptr::null_mut(),
+            HWND(0),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OK | icon_flag,
@@ -216,7 +209,7 @@ pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCance
 
     let result = unsafe {
         MessageBoxW(
-            ptr::null_mut(),
+            HWND(0),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OKCANCEL | icon_flag | default_button,
@@ -251,7 +244,7 @@ pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
 
     let result = unsafe {
         MessageBoxW(
-            ptr::null_mut(),
+            HWND(0),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_YESNO | icon_flag | default_button,
@@ -287,7 +280,7 @@ pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> 
 
     let result = unsafe {
         MessageBoxW(
-            ptr::null_mut(),
+            HWND(0),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_YESNOCANCEL | icon_flag | default_button,
@@ -321,7 +314,7 @@ pub fn input_box(input: &InputBox) -> Option<String> {
 
     let result = unsafe {
         MessageBoxW(
-            ptr::null_mut(),
+            HWND(0),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OKCANCEL | MB_ICONQUESTION,
@@ -466,7 +459,7 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
                         break;
                     }
 
-                    let path = Path::new(&dir).join(filename);
+                    let path = Path::new(&dir).join(&filename);
                     files.push(path.to_string_lossy().into_owned());
 
                     start += filename.len() + 1;
@@ -550,6 +543,7 @@ pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])>
 }
 
 pub fn notification(notification: &Notification) -> bool {
+    /*
     if is_windows10_or_newer() {
         match show_toast_notification(notification) {
             Ok(true) => return true,
@@ -557,7 +551,7 @@ pub fn notification(notification: &Notification) -> bool {
             Err(_) => (),    // Fall back to message box
         }
     }
-    
+    */
     // Fallback for older Windows versions or if Toast notification fails
     show_legacy_notification(notification)
 }
@@ -584,7 +578,7 @@ fn show_legacy_notification(notification: &Notification) -> bool {
     
     let result = unsafe {
         MessageBoxW(
-            HWND(ptr::null_mut()),
+            HWND(0),
             message.as_ptr(),
             title.as_ptr(),
             MB_OK | MB_ICONINFORMATION,
@@ -594,7 +588,8 @@ fn show_legacy_notification(notification: &Notification) -> bool {
     result == IDOK
 }
 
-fn show_toast_notification(notification: &Notification) -> WinResult<bool> {
+/*
+fn show_toast_notification(notification: &Notification) -> Result<bool> {
     // Initialize COM
     unsafe { CoInitializeEx(ptr::null(), COINIT_MULTITHREADED)? };
     
@@ -627,7 +622,7 @@ impl Drop for ComUninitializer {
     }
 }
 
-fn get_app_user_model_id() -> WinResult<HSTRING> {
+fn get_app_user_model_id() -> Result<HSTRING> {
     // Try to get the registered AUMID for the current process
     unsafe {
         let mut aumid_ptr = ptr::null_mut();
@@ -752,3 +747,4 @@ fn add_image_element(toast_xml: &XmlDocument, image_path: &str) -> WinResult<()>
     
     Ok(())
 }
+*/
