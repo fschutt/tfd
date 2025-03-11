@@ -52,23 +52,3 @@ ar = "llvm-ar"
 linker = "x86_64-linux-android21-clang"
 ar = "llvm-ar"
 
-[env]
-# These environment variables will only be set when the corresponding
-# target is being compiled for
-
-# iOS
-[env.x86_64-apple-ios]
-# Path will be set by the script using the SDK path detector
-
-# Android
-[env.aarch64-linux-android]
-CARGO_TARGET_DIR = "target/android"
-
-[env.armv7-linux-androideabi]
-CARGO_TARGET_DIR = "target/android"
-
-[env.i686-linux-android]
-CARGO_TARGET_DIR = "target/android"
-
-[env.x86_64-linux-android]
-CARGO_TARGET_DIR = "target/android"
