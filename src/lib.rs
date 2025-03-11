@@ -9,10 +9,7 @@
 //! untrusted input, for example as dialog title or message, can in the worst
 //! case lead to execution of arbitrary commands.
 
-use std::env;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
 
 // Platform-specific modules
 #[cfg(target_os = "macos")]
@@ -60,196 +57,277 @@ pub enum YesNoCancel {
     No = 2,
 }
 
-pub fn message_box_ok(title: &str, message: &str, icon: MessageBoxIcon) {
-    #[cfg(target_os = "windows")]
-    {
-        windows::message_box_ok(title, message, icon);
-        return;
+// Base dialog struct 
+pub struct Dialog {
+    title: String,
+    message: String,
+}
+
+impl Dialog {
+    pub fn new<S: Into<String>, Q: Into<String>>(title: S, message: Q) -> Self {
+        Self {
+            title: title.into(),
+            message: message.into(),
+        }
     }
-    #[cfg(target_os = "macos")]
-    {
-        macos::message_box_ok(title, message, icon);
-        return;
+    
+    pub fn title(&self) -> &str {
+        &self.title
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        unix::message_box_ok(title, message, icon);
-        return;
+    
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+    
+    pub fn with_title<S: Into<String>>(mut self, title: S) -> Self {
+        self.title = title.into();
+        self
+    }
+    
+    pub fn with_message<S: Into<String>>(mut self, message: S) -> Self {
+        self.message = message.into();
+        self
+    }
+    
+    /// Sanitize input for shell execution
+    fn sanitize_input(input: &str) -> String {
+        input.replace("\"", "\\\"").replace("'", "\\'").replace("`", "\\`")
+    }
+    
+    /// Verify path exists
+    fn verify_path(path: &str) -> Option<PathBuf> {
+        let path = Path::new(path);
+        if path.exists() {
+            Some(path.to_path_buf())
+        } else {
+            None
+        }
     }
 }
 
-pub fn message_box_ok_cancel(
-    title: &str,
-    message: &str,
+// Message Box
+pub struct MessageBox {
+    dialog: Dialog,
     icon: MessageBoxIcon,
-    default: OkCancel,
-) -> OkCancel {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::message_box_ok_cancel(title, message, icon, default);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::message_box_ok_cancel(title, message, icon, default);
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::message_box_ok_cancel(title, message, icon, default);
-    }
-    #[allow(unreachable_code)]
-    OkCancel::Cancel
 }
 
-pub fn message_box_yes_no(
-    title: &str,
-    message: &str,
-    icon: MessageBoxIcon,
-    default: YesNo,
-) -> YesNo {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::message_box_yes_no(title, message, icon, default);
+impl MessageBox {
+    pub fn new<S: Into<String>>(title: S, message: S) -> Self {
+        Self {
+            dialog: Dialog::new(title, message),
+            icon: MessageBoxIcon::Info,
+        }
     }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::message_box_yes_no(title, message, icon, default);
+    
+    pub fn with_icon(mut self, icon: MessageBoxIcon) -> Self {
+        self.icon = icon;
+        self
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::message_box_yes_no(title, message, icon, default);
+    
+    pub fn icon(&self) -> MessageBoxIcon {
+        self.icon
     }
-    #[allow(unreachable_code)]
-    YesNo::No
+    
+    pub fn run_modal(&self) {
+        #[cfg(target_os = "macos")]
+        macos::message_box_ok(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        unix::message_box_ok(self);
+        
+        #[cfg(target_os = "windows")]
+        windows::message_box_ok(self);
+    }
+    
+    pub fn run_modal_ok_cancel(&self, default: OkCancel) -> OkCancel {
+        #[cfg(target_os = "macos")]
+        return macos::message_box_ok_cancel(self, default);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::message_box_ok_cancel(self, default);
+        
+        #[cfg(target_os = "windows")]
+        return windows::message_box_ok_cancel(self, default);
+        
+        #[allow(unreachable_code)]
+        OkCancel::Cancel
+    }
+    
+    pub fn run_modal_yes_no(&self, default: YesNo) -> YesNo {
+        #[cfg(target_os = "macos")]
+        return macos::message_box_yes_no(self, default);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::message_box_yes_no(self, default);
+        
+        #[cfg(target_os = "windows")]
+        return windows::message_box_yes_no(self, default);
+        
+        #[allow(unreachable_code)]
+        YesNo::No
+    }
+    
+    pub fn run_modal_yes_no_cancel(&self, default: YesNoCancel) -> YesNoCancel {
+        #[cfg(target_os = "macos")]
+        return macos::message_box_yes_no_cancel(self, default);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::message_box_yes_no_cancel(self, default);
+        
+        #[cfg(target_os = "windows")]
+        return windows::message_box_yes_no_cancel(self, default);
+        
+        #[allow(unreachable_code)]
+        YesNoCancel::Cancel
+    }
 }
 
-pub fn message_box_yes_no_cancel(
-    title: &str,
-    message: &str,
-    icon: MessageBoxIcon,
-    default: YesNoCancel,
-) -> YesNoCancel {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::message_box_yes_no_cancel(title, message, icon, default);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::message_box_yes_no_cancel(title, message, icon, default);
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::message_box_yes_no_cancel(title, message, icon, default);
-    }
-    #[allow(unreachable_code)]
-    YesNoCancel::Cancel
+// Input Box
+pub struct InputBox {
+    dialog: Dialog,
+    default_value: Option<String>,
+    is_password: bool,
 }
 
-pub fn input_box(title: &str, message: &str, default: &str) -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::input_box(title, message, Some(default));
+impl InputBox {
+    pub fn new<S: Into<String>>(title: S, message: S) -> Self {
+        Self {
+            dialog: Dialog::new(title, message),
+            default_value: None,
+            is_password: false,
+        }
     }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::input_box(title, message, Some(default));
+    
+    pub fn with_default<S: Into<String>>(mut self, default: S) -> Self {
+        self.default_value = Some(default.into());
+        self
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::input_box(title, message, Some(default));
+    
+    pub fn password(mut self, is_password: bool) -> Self {
+        self.is_password = is_password;
+        self
     }
-    #[allow(unreachable_code)]
-    None
+    
+    pub fn default_value(&self) -> Option<&str> {
+        self.default_value.as_deref()
+    }
+    
+    pub fn is_password(&self) -> bool {
+        self.is_password
+    }
+    
+    pub fn run_modal(&self) -> Option<String> {
+        #[cfg(target_os = "macos")]
+        return macos::input_box(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::input_box(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::input_box(self);
+        
+        #[allow(unreachable_code)]
+        None
+    }
 }
 
-pub fn password_box(title: &str, message: &str) -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::input_box(title, message, None);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::input_box(title, message, None);
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::input_box(title, message, None);
-    }
-    #[allow(unreachable_code)]
-    None
+// File Dialog
+pub struct FileDialog {
+    dialog: Dialog,
+    path: String,
+    filter_patterns: Vec<String>,
+    filter_description: String,
+    multiple_selection: bool,
 }
 
-pub fn save_file_dialog(title: &str, path: &str) -> Option<String> {
-    save_file_dialog_with_filter(title, path, &[], "")
-}
-
-pub fn save_file_dialog_with_filter(
-    title: &str,
-    path: &str,
-    filter_patterns: &[&str],
-    description: &str,
-) -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::save_file_dialog(title, path, filter_patterns, description);
+impl FileDialog {
+    pub fn new<S: Into<String>>(title: S) -> Self {
+        Self {
+            dialog: Dialog::new(title, ""),
+            path: String::new(),
+            filter_patterns: Vec::new(),
+            filter_description: String::new(),
+            multiple_selection: false,
+        }
     }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::save_file_dialog(title, path, filter_patterns, description);
+    
+    pub fn with_path<S: Into<String>>(mut self, path: S) -> Self {
+        self.path = path.into();
+        self
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::save_file_dialog(title, path, filter_patterns, description);
+    
+    pub fn with_filter<S: Into<String>>(mut self, patterns: &[&str], description: S) -> Self {
+        self.filter_patterns = patterns.iter().map(|&s| s.to_string()).collect();
+        self.filter_description = description.into();
+        self
     }
-    #[allow(unreachable_code)]
-    None
-}
-
-pub fn open_file_dialog(
-    title: &str,
-    path: &str,
-    filter: Option<(&[&str], &str)>,
-) -> Option<String> {
-    open_file_dialog_multi(title, path, filter).and_then(|v| v.into_iter().next())
-}
-
-pub fn open_file_dialog_multi(
-    title: &str,
-    path: &str,
-    filter: Option<(&[&str], &str)>,
-) -> Option<Vec<String>> {
-    let (patterns, description) = filter.unwrap_or((&[], ""));
-
-    #[cfg(target_os = "windows")]
-    {
-        return windows::open_file_dialog(title, path, patterns, description, true);
+    
+    pub fn with_multiple_selection(mut self, allow_multi: bool) -> Self {
+        self.multiple_selection = allow_multi;
+        self
     }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::open_file_dialog(title, path, patterns, description, true);
+    
+    pub fn path(&self) -> &str {
+        &self.path
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::open_file_dialog(title, path, patterns, description, true);
+    
+    pub fn filter_patterns(&self) -> &[String] {
+        &self.filter_patterns
     }
-    #[allow(unreachable_code)]
-    None
-}
-
-pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::select_folder_dialog(title, path);
+    
+    pub fn filter_description(&self) -> &str {
+        &self.filter_description
     }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::select_folder_dialog(title, path);
+    
+    pub fn multiple_selection(&self) -> bool {
+        self.multiple_selection
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::select_folder_dialog(title, path);
+    
+    pub fn save_file(&self) -> Option<String> {
+        #[cfg(target_os = "macos")]
+        return macos::save_file_dialog(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::save_file_dialog(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::save_file_dialog(self);
+        
+        #[allow(unreachable_code)]
+        None
     }
-    #[allow(unreachable_code)]
-    None
+    
+    pub fn open_file(&self) -> Option<String> {
+        self.open_files().and_then(|v| v.into_iter().next())
+    }
+    
+    pub fn open_files(&self) -> Option<Vec<String>> {
+        #[cfg(target_os = "macos")]
+        return macos::open_file_dialog(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::open_file_dialog(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::open_file_dialog(self);
+        
+        #[allow(unreachable_code)]
+        None
+    }
+    
+    pub fn select_folder(&self) -> Option<String> {
+        #[cfg(target_os = "macos")]
+        return macos::select_folder_dialog(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::select_folder_dialog(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::select_folder_dialog(self);
+        
+        #[allow(unreachable_code)]
+        None
+    }
 }
 
 pub enum DefaultColorValue {
@@ -257,45 +335,102 @@ pub enum DefaultColorValue {
     RGB([u8; 3]),
 }
 
-pub fn color_chooser_dialog(title: &str, default: DefaultColorValue) -> Option<(String, [u8; 3])> {
-    #[cfg(target_os = "windows")]
-    {
-        return windows::color_chooser_dialog(title, default);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return macos::color_chooser_dialog(title, default);
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        return unix::color_chooser_dialog(title, default);
-    }
-    #[allow(unreachable_code)]
-    None
+pub struct ColorChooser {
+    dialog: Dialog,
+    default_color: DefaultColorValue,
 }
 
-// Helper functions
-#[cfg(unix)]
-fn get_command_output(cmd: &mut Command) -> Option<String> {
-    if let Ok(output) = cmd.output() {
-        if output.status.success() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                return Some(stdout.trim().to_string());
-            }
+impl ColorChooser {
+    pub fn new<S: Into<String>>(title: S) -> Self {
+        Self {
+            dialog: Dialog::new(title, String::new()),
+            default_color: DefaultColorValue::RGB([0, 0, 0]),
         }
     }
-    None
+    
+    pub fn with_default_color(mut self, default: DefaultColorValue) -> Self {
+        self.default_color = default;
+        self
+    }
+    
+    pub fn default_color(&self) -> &DefaultColorValue {
+        &self.default_color
+    }
+    
+    pub fn run_modal(&self) -> Option<(String, [u8; 3])> {
+        #[cfg(target_os = "macos")]
+        return macos::color_chooser_dialog(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::color_chooser_dialog(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::color_chooser_dialog(self);
+        
+        #[allow(unreachable_code)]
+        None
+    }
 }
 
-#[cfg(unix)]
-fn command_exists(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .stdout(Stdio::null())
-        .status()
-        .map_or(false, |s| s.success())
+pub struct Notification {
+    title: String,
+    message: String,
+    subtitle: Option<String>,
+    sound: Option<String>,
 }
 
+impl Notification {
+    pub fn new<S: Into<String>>(title: S, message: S) -> Self {
+        Self {
+            title: title.into(),
+            message: message.into(),
+            subtitle: None,
+            sound: None,
+        }
+    }
+    
+    pub fn with_subtitle<S: Into<String>>(mut self, subtitle: S) -> Self {
+        self.subtitle = Some(subtitle.into());
+        self
+    }
+    
+    pub fn with_sound<S: Into<String>>(mut self, sound: S) -> Self {
+        self.sound = Some(sound.into());
+        self
+    }
+    
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+    
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+    
+    pub fn subtitle(&self) -> Option<&str> {
+        self.subtitle.as_deref()
+    }
+    
+    pub fn sound(&self) -> Option<&str> {
+        self.sound.as_deref()
+    }
+    
+    pub fn show(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        return macos::notification(self);
+        
+        #[cfg(all(unix, not(target_os = "macos")))]
+        return unix::notification(self);
+        
+        #[cfg(target_os = "windows")]
+        return windows::notification(self);
+        
+        #[allow(unreachable_code)]
+        false
+    }
+}
+
+// Utility functions
 fn hex_to_rgb(hex: &str) -> [u8; 3] {
     let hex = hex.trim_start_matches('#');
     let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);

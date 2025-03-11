@@ -4,6 +4,7 @@ use std::iter::once;
 use std::mem;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr;
+use std::path::Path;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -60,10 +61,32 @@ struct CHOOSECOLORW {
     lpTemplateName: *const u16,
 }
 
+// Windows notifications structs
+#[allow(non_snake_case)]
+#[repr(C)]
+struct NOTIFYICONDATAW {
+    cbSize: u32,
+    hWnd: *mut std::ffi::c_void,
+    uID: u32,
+    uFlags: u32,
+    uCallbackMessage: u32,
+    hIcon: *mut std::ffi::c_void,
+    szTip: [u16; 128],
+    dwState: u32,
+    dwStateMask: u32,
+    szInfo: [u16; 256],
+    uVersion: u32,
+    szInfoTitle: [u16; 64],
+    dwInfoFlags: u32,
+    guidItem: [u8; 16], // GUID
+    hBalloonIcon: *mut std::ffi::c_void,
+}
+
 type HWND = *mut std::ffi::c_void;
 type HINSTANCE = *mut std::ffi::c_void;
 type LPARAM = isize;
 type PIDLIST_ABSOLUTE = *mut std::ffi::c_void;
+type HICON = *mut std::ffi::c_void;
 
 const MB_OK: u32 = 0x00000000;
 const MB_OKCANCEL: u32 = 0x00000001;
@@ -91,6 +114,15 @@ const CC_RGBINIT: u32 = 0x00000001;
 const CC_FULLOPEN: u32 = 0x00000002;
 const CC_ANYCOLOR: u32 = 0x00000100;
 
+// Windows notification constants
+const NIM_ADD: u32 = 0x00000000;
+const NIM_MODIFY: u32 = 0x00000001;
+const NIM_DELETE: u32 = 0x00000002;
+const NIF_INFO: u32 = 0x00000010;
+const NIIF_INFO: u32 = 0x00000001;
+const NIIF_WARNING: u32 = 0x00000002;
+const NIIF_ERROR: u32 = 0x00000003;
+
 const IDOK: i32 = 1;
 const IDCANCEL: i32 = 2;
 const IDYES: i32 = 6;
@@ -104,6 +136,8 @@ extern "system" {
     fn SHGetPathFromIDListW(pidl: PIDLIST_ABSOLUTE, pszPath: *mut u16) -> i32;
     fn ChooseColorW(lpcc: *mut CHOOSECOLORW) -> i32;
     fn CoTaskMemFree(pv: *mut std::ffi::c_void);
+    fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
+    fn Shell_NotifyIconW(dwMessage: u32, lpdata: *mut NOTIFYICONDATAW) -> i32;
 }
 
 fn to_wstring(s: &str) -> Vec<u16> {
@@ -116,7 +150,11 @@ fn from_wstring(s: &[u16]) -> String {
     os_string.to_string_lossy().into_owned()
 }
 
-pub fn message_box_ok(title: &str, message: &str, icon: MessageBoxIcon) {
+pub fn message_box_ok(msg_box: &MessageBox) {
+    let title = msg_box.dialog.title();
+    let message = msg_box.dialog.message();
+    let icon = msg_box.icon();
+    
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -137,12 +175,11 @@ pub fn message_box_ok(title: &str, message: &str, icon: MessageBoxIcon) {
     }
 }
 
-pub fn message_box_ok_cancel(
-    title: &str,
-    message: &str,
-    icon: MessageBoxIcon,
-    default: OkCancel,
-) -> OkCancel {
+pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCancel {
+    let title = msg_box.dialog.title();
+    let message = msg_box.dialog.message();
+    let icon = msg_box.icon();
+    
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -173,12 +210,11 @@ pub fn message_box_ok_cancel(
     }
 }
 
-pub fn message_box_yes_no(
-    title: &str,
-    message: &str,
-    icon: MessageBoxIcon,
-    default: YesNo,
-) -> YesNo {
+pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
+    let title = msg_box.dialog.title();
+    let message = msg_box.dialog.message();
+    let icon = msg_box.icon();
+    
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -209,12 +245,11 @@ pub fn message_box_yes_no(
     }
 }
 
-pub fn message_box_yes_no_cancel(
-    title: &str,
-    message: &str,
-    icon: MessageBoxIcon,
-    default: YesNoCancel,
-) -> YesNoCancel {
+pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> YesNoCancel {
+    let title = msg_box.dialog.title();
+    let message = msg_box.dialog.message();
+    let icon = msg_box.icon();
+    
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -247,27 +282,54 @@ pub fn message_box_yes_no_cancel(
     }
 }
 
-pub fn input_box(title: &str, message: &str, default: Option<&str>) -> Option<String> {
-    // For simplicity, we'll use a MessageBox to show the message and then create a small
-    // Windows Forms app to get the input. In a real implementation, you'd use a proper dialog box.
-    message_box_ok(title, message, MessageBoxIcon::Info);
-
-    // Simplified implementation - in a full implementation, you'd use a proper dialog with input field
-    Some(default.unwrap_or("").to_string())
+pub fn input_box(input: &InputBox) -> Option<String> {
+    // For Windows, we'll use a simple message box for now
+    // Note: in a real implementation, we should create a proper input dialog
+    // This is a basic implementation that shows the prompt and returns the default value
+    
+    let title = input.dialog.title();
+    let message = input.dialog.message();
+    let default = input.default_value().unwrap_or("");
+    let is_password = input.is_password();
+    
+    // Show a message box with the prompt
+    let msg_type = if is_password {
+        "Password"
+    } else {
+        "Input"
+    };
+    
+    let prompt = format!("{}\n\n[Default: {}]", message, default);
+    
+    let w_title = to_wstring(&format!("{} - {}", title, msg_type));
+    let w_message = to_wstring(&prompt);
+    
+    let result = unsafe {
+        MessageBoxW(
+            ptr::null_mut(),
+            w_message.as_ptr(),
+            w_title.as_ptr(),
+            MB_OKCANCEL | MB_ICONQUESTION,
+        )
+    };
+    
+    match result {
+        IDOK => Some(default.to_string()),
+        _ => None,
+    }
 }
 
-pub fn save_file_dialog(
-    title: &str,
-    path: &str,
-    filter_patterns: &[&str],
-    description: &str,
-) -> Option<String> {
+pub fn save_file_dialog(dialog: &FileDialog) -> Option<String> {
+    let title = dialog.dialog.title();
+    let path = dialog.path();
+    let filter_patterns = dialog.filter_patterns();
+    let description = dialog.filter_description();
+    
     let w_title = to_wstring(title);
-    let w_path = to_wstring(path);
 
     // Build filter string
     let mut filter = String::new();
-    if !description.is_empty() {
+    if !description.is_empty() && !filter_patterns.is_empty() {
         filter.push_str(description);
         filter.push('\0');
 
@@ -314,19 +376,18 @@ pub fn save_file_dialog(
     }
 }
 
-pub fn open_file_dialog(
-    title: &str,
-    path: &str,
-    filter_patterns: &[&str],
-    description: &str,
-    allow_multi: bool,
-) -> Option<Vec<String>> {
+pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
+    let title = dialog.dialog.title();
+    let path = dialog.path();
+    let filter_patterns = dialog.filter_patterns();
+    let description = dialog.filter_description();
+    let allow_multi = dialog.multiple_selection();
+    
     let w_title = to_wstring(title);
-    let w_path = to_wstring(path);
 
     // Build filter string
     let mut filter = String::new();
-    if !description.is_empty() {
+    if !description.is_empty() && !filter_patterns.is_empty() {
         filter.push_str(description);
         filter.push('\0');
 
@@ -390,7 +451,7 @@ pub fn open_file_dialog(
                         break;
                     }
 
-                    let path = PathBuf::from(&dir).join(filename);
+                    let path = Path::new(&dir).join(filename);
                     files.push(path.to_string_lossy().into_owned());
 
                     start += filename.len() + 1;
@@ -406,7 +467,10 @@ pub fn open_file_dialog(
     }
 }
 
-pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
+pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
+    let title = dialog.dialog.title();
+    let path = dialog.path();
+    
     let w_title = to_wstring(title);
 
     let mut bi: BROWSEINFOW = unsafe { mem::zeroed() };
@@ -431,10 +495,12 @@ pub fn select_folder_dialog(title: &str, path: &str) -> Option<String> {
     }
 }
 
-pub fn color_chooser_dialog(title: &str, default: DefaultColorValue) -> Option<(String, [u8; 3])> {
+pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])> {
+    let title = chooser.dialog.title();
+    
     let w_title = to_wstring(title);
 
-    let default_rgb = match default {
+    let default_rgb = match chooser.default_color() {
         DefaultColorValue::Hex(hex) => super::hex_to_rgb(hex),
         DefaultColorValue::RGB(rgb) => *rgb,
     };
@@ -466,4 +532,28 @@ pub fn color_chooser_dialog(title: &str, default: DefaultColorValue) -> Option<(
     } else {
         None
     }
+}
+
+pub fn notification(notification: &Notification) -> bool {
+    let title = notification.title();
+    let message = notification.message();
+    
+    // Windows doesn't have built-in notification API in the standard library
+    // This is a simplified implementation that shows a balloon notification
+    // In a real application, you'd want to use the Windows notification API
+    
+    // For simplicity, show a message box instead
+    let w_title = to_wstring(title);
+    let w_message = to_wstring(message);
+    
+    let result = unsafe {
+        MessageBoxW(
+            ptr::null_mut(),
+            w_message.as_ptr(),
+            w_title.as_ptr(),
+            MB_OK | MB_ICONINFORMATION,
+        )
+    };
+    
+    result == IDOK
 }
