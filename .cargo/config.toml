@@ -1,0 +1,74 @@
+# Cross-compilation configurations for desktop platforms
+
+# Windows MSVC
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# Windows GNU
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+linker = "x86_64-w64-mingw32-gcc"
+
+# Linux
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# macOS
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# For cross-compilation to Linux from macOS/Windows
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=-crt-static"]
+
+# For cross-compilation to Windows from Linux/macOS
+[target.x86_64-pc-windows-gnu.dependencies]
+libwinpthread-1 = { stage = 2 }
+
+[target.aarch64-apple-ios]
+rustflags = [
+    "-C", "link-arg=-fuse-ld=lld",
+]
+
+[target.x86_64-apple-ios]
+rustflags = [
+    "-C", "link-arg=-fuse-ld=lld",
+]
+
+[target.armv7-linux-androideabi]
+linker = "armv7a-linux-androideabi21-clang"
+ar = "llvm-ar"
+
+[target.aarch64-linux-android]
+linker = "aarch64-linux-android21-clang"
+ar = "llvm-ar"
+
+[target.i686-linux-android]
+linker = "i686-linux-android21-clang"
+ar = "llvm-ar"
+
+[target.x86_64-linux-android]
+linker = "x86_64-linux-android21-clang"
+ar = "llvm-ar"
+
+[env]
+# These environment variables will only be set when the corresponding
+# target is being compiled for
+
+# iOS
+[env.x86_64-apple-ios]
+# Path will be set by the script using the SDK path detector
+
+# Android
+[env.aarch64-linux-android]
+CARGO_TARGET_DIR = "target/android"
+
+[env.armv7-linux-androideabi]
+CARGO_TARGET_DIR = "target/android"
+
+[env.i686-linux-android]
+CARGO_TARGET_DIR = "target/android"
+
+[env.x86_64-linux-android]
+CARGO_TARGET_DIR = "target/android"

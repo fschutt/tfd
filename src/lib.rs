@@ -18,6 +18,10 @@ mod macos;
 mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(target_os = "android")]
+mod android;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MessageBoxIcon {
