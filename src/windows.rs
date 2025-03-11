@@ -7,7 +7,7 @@ use std::path::Path;
 use std::ptr;
 
 // Add these imports at the top of your windows.rs file
-use windows::{
+use ::windows::{
     core::{HSTRING, Result as WinResult},
     Data::Xml::Dom::{XmlDocument, XmlElement},
     Foundation::Uri,
@@ -563,7 +563,7 @@ pub fn notification(notification: &Notification) -> bool {
 }
 
 fn is_windows10_or_newer() -> bool {
-    use windows::Win32::System::SystemInformation::{OSVERSIONINFOW, OSVERSIONINFOEXW};
+    use ::windows::Win32::System::SystemInformation::{OSVERSIONINFOW, OSVERSIONINFOEXW};
     
     unsafe {
         let mut version_info: OSVERSIONINFOEXW = mem::zeroed();
@@ -643,7 +643,7 @@ fn get_app_user_model_id() -> WinResult<HSTRING> {
             )?;
             
             // Free the string allocated by GetCurrentProcessExplicitAppUserModelID
-            windows::Win32::System::Com::CoTaskMemFree(aumid_ptr as _);
+            ::windows::Win32::System::Com::CoTaskMemFree(aumid_ptr as _);
             
             return Ok(aumid);
         }
