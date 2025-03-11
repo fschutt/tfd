@@ -1,7 +1,7 @@
 use super::*;
 use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 // Check which dialog program is available
 fn detect_dialog_program() -> &'static str {
@@ -30,7 +30,7 @@ pub fn message_box_ok(msg_box: &MessageBox) {
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -100,7 +100,7 @@ pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCance
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -227,7 +227,7 @@ pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -344,7 +344,7 @@ pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> 
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -436,7 +436,7 @@ pub fn input_box(input: &InputBox) -> Option<String> {
     let message = input.dialog.message();
     let default_value = input.default_value().unwrap_or("");
     let is_password = input.is_password();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -517,7 +517,7 @@ pub fn save_file_dialog(dialog: &FileDialog) -> Option<String> {
     let path = dialog.path();
     let filter_patterns = dialog.filter_patterns();
     let description = dialog.filter_description();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -607,7 +607,7 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
     let filter_patterns = dialog.filter_patterns();
     let description = dialog.filter_description();
     let allow_multi = dialog.multiple_selection();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -710,7 +710,7 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
 pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
     let title = dialog.dialog.title();
     let path = dialog.path();
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -781,14 +781,14 @@ pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
 
 pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])> {
     let title = chooser.dialog.title();
-    
+
     let default_rgb = match chooser.default_color() {
         DefaultColorValue::Hex(hex) => super::hex_to_rgb(hex),
         DefaultColorValue::RGB(rgb) => *rgb,
     };
 
     let default_hex = super::rgb_to_hex(&default_rgb);
-    
+
     let dialog_program = detect_dialog_program();
 
     match dialog_program {
@@ -893,17 +893,14 @@ pub fn notification(notification: &Notification) -> bool {
     let title = notification.title();
     let message = notification.message();
     let subtitle = notification.subtitle().unwrap_or("");
-    
+
     // Try notify-send first (standard for Linux desktop notifications)
     if command_exists("notify-send") {
-        let status = Command::new("notify-send")
-            .arg(title)
-            .arg(message)
-            .status();
-            
+        let status = Command::new("notify-send").arg(title).arg(message).status();
+
         return status.is_ok() && status.unwrap().success();
     }
-    
+
     // Fallback to zenity if available
     if command_exists("zenity") {
         let status = Command::new("zenity")
@@ -911,28 +908,28 @@ pub fn notification(notification: &Notification) -> bool {
             .arg("--text")
             .arg(format!("{}: {}", title, message))
             .status();
-            
+
         return status.is_ok() && status.unwrap().success();
     }
-    
+
     // Fallback to kdialog if available
     if command_exists("kdialog") {
         let status = Command::new("kdialog")
             .arg("--passivepopup")
             .arg(message)
-            .arg("5")  // Show for 5 seconds
+            .arg("5") // Show for 5 seconds
             .arg("--title")
             .arg(title)
             .status();
-            
+
         return status.is_ok() && status.unwrap().success();
     }
-    
+
     // Last resort - print to console
     println!("Notification: {} - {}", title, message);
     if !subtitle.is_empty() {
         println!("  {}", subtitle);
     }
-    
+
     true
 }

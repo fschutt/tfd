@@ -3,8 +3,8 @@ use std::ffi::{OsStr, OsString};
 use std::iter::once;
 use std::mem;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
-use std::ptr;
 use std::path::Path;
+use std::ptr;
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -154,7 +154,7 @@ pub fn message_box_ok(msg_box: &MessageBox) {
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -179,7 +179,7 @@ pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCance
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -214,7 +214,7 @@ pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -249,7 +249,7 @@ pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> 
     let title = msg_box.dialog.title();
     let message = msg_box.dialog.message();
     let icon = msg_box.icon();
-    
+
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
 
@@ -286,24 +286,20 @@ pub fn input_box(input: &InputBox) -> Option<String> {
     // For Windows, we'll use a simple message box for now
     // Note: in a real implementation, we should create a proper input dialog
     // This is a basic implementation that shows the prompt and returns the default value
-    
+
     let title = input.dialog.title();
     let message = input.dialog.message();
     let default = input.default_value().unwrap_or("");
     let is_password = input.is_password();
-    
+
     // Show a message box with the prompt
-    let msg_type = if is_password {
-        "Password"
-    } else {
-        "Input"
-    };
-    
+    let msg_type = if is_password { "Password" } else { "Input" };
+
     let prompt = format!("{}\n\n[Default: {}]", message, default);
-    
+
     let w_title = to_wstring(&format!("{} - {}", title, msg_type));
     let w_message = to_wstring(&prompt);
-    
+
     let result = unsafe {
         MessageBoxW(
             ptr::null_mut(),
@@ -312,7 +308,7 @@ pub fn input_box(input: &InputBox) -> Option<String> {
             MB_OKCANCEL | MB_ICONQUESTION,
         )
     };
-    
+
     match result {
         IDOK => Some(default.to_string()),
         _ => None,
@@ -324,7 +320,7 @@ pub fn save_file_dialog(dialog: &FileDialog) -> Option<String> {
     let path = dialog.path();
     let filter_patterns = dialog.filter_patterns();
     let description = dialog.filter_description();
-    
+
     let w_title = to_wstring(title);
 
     // Build filter string
@@ -382,7 +378,7 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
     let filter_patterns = dialog.filter_patterns();
     let description = dialog.filter_description();
     let allow_multi = dialog.multiple_selection();
-    
+
     let w_title = to_wstring(title);
 
     // Build filter string
@@ -470,7 +466,7 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
 pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
     let title = dialog.dialog.title();
     let path = dialog.path();
-    
+
     let w_title = to_wstring(title);
 
     let mut bi: BROWSEINFOW = unsafe { mem::zeroed() };
@@ -497,7 +493,7 @@ pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
 
 pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])> {
     let title = chooser.dialog.title();
-    
+
     let w_title = to_wstring(title);
 
     let default_rgb = match chooser.default_color() {
@@ -537,15 +533,15 @@ pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])>
 pub fn notification(notification: &Notification) -> bool {
     let title = notification.title();
     let message = notification.message();
-    
+
     // Windows doesn't have built-in notification API in the standard library
     // This is a simplified implementation that shows a balloon notification
     // In a real application, you'd want to use the Windows notification API
-    
+
     // For simplicity, show a message box instead
     let w_title = to_wstring(title);
     let w_message = to_wstring(message);
-    
+
     let result = unsafe {
         MessageBoxW(
             ptr::null_mut(),
@@ -554,6 +550,6 @@ pub fn notification(notification: &Notification) -> bool {
             MB_OK | MB_ICONINFORMATION,
         )
     };
-    
+
     result == IDOK
 }
