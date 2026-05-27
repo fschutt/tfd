@@ -139,24 +139,24 @@ const IDNO: i32 = 7;
 // standard Windows SDK libs (user32/comdlg32/shell32/ole32) that resolve on
 // every Windows target including i686-rust9x — unlike the `windows` crate's
 // bundled `windows.0.48.5.lib`. The APIs themselves date to Win95/98.
-#[link(name = "user32")]
+#[link(name = "user32", kind = "raw-dylib")]
 extern "system" {
     fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, utype: u32) -> i32;
     fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
 }
-#[link(name = "comdlg32")]
+#[link(name = "comdlg32", kind = "raw-dylib")]
 extern "system" {
     fn GetOpenFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
     fn GetSaveFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
     fn ChooseColorW(lpcc: *mut CHOOSECOLORW) -> i32;
 }
-#[link(name = "shell32")]
+#[link(name = "shell32", kind = "raw-dylib")]
 extern "system" {
     fn SHBrowseForFolderW(lpbi: *mut BROWSEINFOW) -> PIDLIST_ABSOLUTE;
     fn SHGetPathFromIDListW(pidl: PIDLIST_ABSOLUTE, pszPath: *mut u16) -> i32;
     fn Shell_NotifyIconW(dwMessage: u32, lpdata: *mut NOTIFYICONDATAW) -> i32;
 }
-#[link(name = "ole32")]
+#[link(name = "ole32", kind = "raw-dylib")]
 extern "system" {
     fn CoTaskMemFree(pv: *mut std::ffi::c_void);
 }
