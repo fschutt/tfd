@@ -5,17 +5,13 @@ use std::mem;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 use std::ptr;
-use ::windows::core::HSTRING;
-use ::windows::Data::Xml::Dom::XmlDocument;
-use ::windows::Win32::UI::Shell::GetCurrentProcessExplicitAppUserModelID;
-use ::windows::Win32::System::Com::CoUninitialize;
-use ::windows::UI::Notifications::ToastNotification;
-use ::windows::UI::Notifications::ToastNotificationManager;
-use ::windows::Win32::System::Com::COINIT_MULTITHREADED;
-use ::windows::Win32::System::Com::CoInitializeEx;
-use ::windows::Win32::Foundation::HWND;
-use ::windows::UI::Notifications::ToastTemplateType;
-use ::windows::Win32::System::SystemInformation::GetVersionExW;
+// The `windows` crate (0.48) is intentionally NOT used: the dialogs below
+// already call comdlg32/shell32/user32 directly via raw `extern "system"`
+// (the classic Win95/98-era dialog APIs), which link against standard import
+// libs and therefore work on legacy targets like i686-rust9x — the `windows`
+// 0.48 crate ships its own import lib (`windows.0.48.5.lib`) that those
+// targets can't resolve. `HWND` is a raw pointer (see below); the WinRT toast
+// path that needed the crate stays disabled.
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -93,7 +89,7 @@ struct NOTIFYICONDATAW {
     hBalloonIcon: *mut std::ffi::c_void,
 }
 
-// type HWND = *mut std::ffi::c_void;
+type HWND = *mut std::ffi::c_void;
 type HINSTANCE = *mut std::ffi::c_void;
 type LPARAM = isize;
 type PIDLIST_ABSOLUTE = *mut std::ffi::c_void;
@@ -139,17 +135,30 @@ const IDCANCEL: i32 = 2;
 const IDYES: i32 = 6;
 const IDNO: i32 = 7;
 
-/* */
+// Link each Win32 dialog function from its system DLL's import lib. These are
+// standard Windows SDK libs (user32/comdlg32/shell32/ole32) that resolve on
+// every Windows target including i686-rust9x — unlike the `windows` crate's
+// bundled `windows.0.48.5.lib`. The APIs themselves date to Win95/98.
+#[link(name = "user32")]
 extern "system" {
     fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, utype: u32) -> i32;
+    fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
+}
+#[link(name = "comdlg32")]
+extern "system" {
     fn GetOpenFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
     fn GetSaveFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
+    fn ChooseColorW(lpcc: *mut CHOOSECOLORW) -> i32;
+}
+#[link(name = "shell32")]
+extern "system" {
     fn SHBrowseForFolderW(lpbi: *mut BROWSEINFOW) -> PIDLIST_ABSOLUTE;
     fn SHGetPathFromIDListW(pidl: PIDLIST_ABSOLUTE, pszPath: *mut u16) -> i32;
-    fn ChooseColorW(lpcc: *mut CHOOSECOLORW) -> i32;
-    fn CoTaskMemFree(pv: *mut std::ffi::c_void);
-    fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
     fn Shell_NotifyIconW(dwMessage: u32, lpdata: *mut NOTIFYICONDATAW) -> i32;
+}
+#[link(name = "ole32")]
+extern "system" {
+    fn CoTaskMemFree(pv: *mut std::ffi::c_void);
 }
 
 fn to_wstring(s: &str) -> Vec<u16> {
@@ -179,7 +188,7 @@ pub fn message_box_ok(msg_box: &MessageBox) {
 
     unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OK | icon_flag,
@@ -209,7 +218,7 @@ pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCance
 
     let result = unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OKCANCEL | icon_flag | default_button,
@@ -244,7 +253,7 @@ pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
 
     let result = unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_YESNO | icon_flag | default_button,
@@ -280,7 +289,7 @@ pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> 
 
     let result = unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_YESNOCANCEL | icon_flag | default_button,
@@ -314,7 +323,7 @@ pub fn input_box(input: &InputBox) -> Option<String> {
 
     let result = unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             w_message.as_ptr(),
             w_title.as_ptr(),
             MB_OKCANCEL | MB_ICONQUESTION,
@@ -556,21 +565,10 @@ pub fn notification(notification: &Notification) -> bool {
     show_legacy_notification(notification)
 }
 
-fn is_windows10_or_newer() -> bool {
-    use ::windows::Win32::System::SystemInformation::{OSVERSIONINFOW, OSVERSIONINFOEXW};
-    
-    unsafe {
-        let mut version_info: OSVERSIONINFOEXW = mem::zeroed();
-        version_info.dwOSVersionInfoSize = mem::size_of::<OSVERSIONINFOEXW>() as u32;
-        
-        // GetVersionExW is deprecated but still works
-        if GetVersionExW(ptr::addr_of_mut!(version_info) as *mut OSVERSIONINFOW).as_bool() {
-            return version_info.dwMajorVersion >= 10;
-        }
-    }
-    
-    false
-}
+// (removed) `is_windows10_or_newer` queried the OS version via the `windows`
+// crate's GetVersionExW to decide between toast vs legacy notifications; the
+// toast path is disabled below, so it's dead — and it was the last consumer of
+// the `windows` crate here.
 
 fn show_legacy_notification(notification: &Notification) -> bool {
     let title = to_wstring(notification.title());
@@ -578,7 +576,7 @@ fn show_legacy_notification(notification: &Notification) -> bool {
     
     let result = unsafe {
         MessageBoxW(
-            HWND(0),
+            ptr::null_mut(),
             message.as_ptr(),
             title.as_ptr(),
             MB_OK | MB_ICONINFORMATION,

@@ -1,26 +1,18 @@
 [package]
 name = "tfd"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Pure-Rust fork of the tinyfiledialogs C library"
 
 [dependencies]
 
-[target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.48", features = [
-    "Foundation",
-    "Win32_Foundation",
-    "Win32_System_Com",
-    "Win32_UI_Shell_Common", 
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-    "Win32_System_Registry",
-    "Win32_System_SystemInformation",
-    "Data_Xml_Dom",
-    "UI_Notifications"
-]}
+# Windows: NO `windows` crate. The dialog APIs (MessageBoxW, GetOpenFileNameW,
+# SHBrowseForFolderW, ChooseColorW, …) are declared via raw `extern "system"`
+# in src/windows.rs and link against comdlg32/shell32/user32 — the classic
+# Win95/98+ dialog APIs — so tfd builds on legacy Windows targets (e.g.
+# i686-rust9x) that can't resolve the `windows` 0.48 import lib. The system
+# import libs are pulled in via the #[link] attributes in src/windows.rs.
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6.0"
