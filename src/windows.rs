@@ -5,13 +5,17 @@ use std::mem;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 use std::ptr;
-// The `windows` crate (0.48) is intentionally NOT used: the dialogs below
-// already call comdlg32/shell32/user32 directly via raw `extern "system"`
-// (the classic Win95/98-era dialog APIs), which link against standard import
-// libs and therefore work on legacy targets like i686-rust9x — the `windows`
-// 0.48 crate ships its own import lib (`windows.0.48.5.lib`) that those
-// targets can't resolve. `HWND` is a raw pointer (see below); the WinRT toast
-// path that needed the crate stays disabled.
+// The `windows` crate (0.48) is intentionally NOT used, and neither is any
+// link-time binding to the Win32 dialog DLLs. The dialogs below resolve their
+// Win32 entry points (MessageBoxW, GetOpenFileNameW, SHBrowseForFolderW,
+// ChooseColorW, …) at RUNTIME via LoadLibraryW + GetProcAddress and call them
+// through transmuted function pointers. The only link-time dependency is
+// kernel32 (for LoadLibraryW/GetProcAddress/FreeLibrary), whose import lib is
+// the one that is always present on every Windows target — so tfd links on
+// legacy targets like i686-rust9x where neither the `windows` 0.48 import lib
+// nor `#[link]`/raw-dylib against comdlg32/shell32/user32/ole32 reliably
+// resolve. `HWND` is a raw pointer (see below); the WinRT toast path that
+// needed the crate stays disabled.
 
 #[allow(non_snake_case)]
 #[repr(C)]
@@ -68,8 +72,10 @@ struct CHOOSECOLORW {
     lpTemplateName: *const u16,
 }
 
-// Windows notifications structs
+// Windows notifications struct. Kept defined for the (currently disabled)
+// Shell_NotifyIconW balloon path; the active notification code uses MessageBoxW.
 #[allow(non_snake_case)]
+#[allow(dead_code)]
 #[repr(C)]
 struct NOTIFYICONDATAW {
     cbSize: u32,
@@ -90,9 +96,12 @@ struct NOTIFYICONDATAW {
 }
 
 type HWND = *mut std::ffi::c_void;
+#[allow(dead_code)]
 type HINSTANCE = *mut std::ffi::c_void;
+#[allow(dead_code)]
 type LPARAM = isize;
 type PIDLIST_ABSOLUTE = *mut std::ffi::c_void;
+#[allow(dead_code)]
 type HICON = *mut std::ffi::c_void;
 
 const MB_OK: u32 = 0x00000000;
@@ -121,45 +130,86 @@ const CC_RGBINIT: u32 = 0x00000001;
 const CC_FULLOPEN: u32 = 0x00000002;
 const CC_ANYCOLOR: u32 = 0x00000100;
 
-// Windows notification constants
+// Windows notification constants (for the disabled Shell_NotifyIconW path).
+#[allow(dead_code)]
 const NIM_ADD: u32 = 0x00000000;
+#[allow(dead_code)]
 const NIM_MODIFY: u32 = 0x00000001;
+#[allow(dead_code)]
 const NIM_DELETE: u32 = 0x00000002;
+#[allow(dead_code)]
 const NIF_INFO: u32 = 0x00000010;
+#[allow(dead_code)]
 const NIIF_INFO: u32 = 0x00000001;
+#[allow(dead_code)]
 const NIIF_WARNING: u32 = 0x00000002;
+#[allow(dead_code)]
 const NIIF_ERROR: u32 = 0x00000003;
 
 const IDOK: i32 = 1;
+#[allow(dead_code)]
 const IDCANCEL: i32 = 2;
 const IDYES: i32 = 6;
 const IDNO: i32 = 7;
 
-// Link each Win32 dialog function from its system DLL's import lib. These are
-// standard Windows SDK libs (user32/comdlg32/shell32/ole32) that resolve on
-// every Windows target including i686-rust9x — unlike the `windows` crate's
-// bundled `windows.0.48.5.lib`. The APIs themselves date to Win95/98.
-#[link(name = "user32", kind = "raw-dylib")]
+// ---------------------------------------------------------------------------
+// Runtime dynamic-linking shim
+// ---------------------------------------------------------------------------
+//
+// Instead of binding the Win32 dialog functions at link time (via `#[link]` /
+// raw-dylib against user32/comdlg32/shell32/ole32 — none of which reliably
+// resolve on the exotic i686-rust9x target), we resolve them at RUNTIME with
+// LoadLibraryW + GetProcAddress and call them through `core::mem::transmute`d
+// function pointers. The only thing we bind at link time is kernel32, which is
+// always linked by std and whose import lib is the one lib guaranteed present
+// on every Windows target.
+#[link(name = "kernel32")]
 extern "system" {
-    fn MessageBoxW(hwnd: HWND, text: *const u16, caption: *const u16, utype: u32) -> i32;
-    fn LoadIconW(hInstance: HINSTANCE, lpIconName: *const u16) -> HICON;
+    fn LoadLibraryW(lpLibFileName: *const u16) -> *mut std::ffi::c_void;
+    fn GetProcAddress(hModule: *mut std::ffi::c_void, lpProcName: *const u8) -> *mut std::ffi::c_void;
+    #[allow(dead_code)]
+    fn FreeLibrary(hLibModule: *mut std::ffi::c_void) -> i32;
 }
-#[link(name = "comdlg32", kind = "raw-dylib")]
-extern "system" {
-    fn GetOpenFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
-    fn GetSaveFileNameW(lpofn: *mut OPENFILENAMEW) -> i32;
-    fn ChooseColorW(lpcc: *mut CHOOSECOLORW) -> i32;
+
+// Module names as NUL-terminated UTF-16, the form LoadLibraryW wants. We load
+// per-call: dialogs are rare, user-driven events, so the cost is irrelevant
+// and we avoid any caching/`static mut` machinery. The OS keeps the DLL mapped
+// for the process lifetime regardless, so we never FreeLibrary.
+const DLL_USER32: &[u16] = &[
+    b'u' as u16, b's' as u16, b'e' as u16, b'r' as u16, b'3' as u16, b'2' as u16, b'.' as u16,
+    b'd' as u16, b'l' as u16, b'l' as u16, 0,
+];
+const DLL_COMDLG32: &[u16] = &[
+    b'c' as u16, b'o' as u16, b'm' as u16, b'd' as u16, b'l' as u16, b'g' as u16, b'3' as u16,
+    b'2' as u16, b'.' as u16, b'd' as u16, b'l' as u16, b'l' as u16, 0,
+];
+const DLL_SHELL32: &[u16] = &[
+    b's' as u16, b'h' as u16, b'e' as u16, b'l' as u16, b'l' as u16, b'3' as u16, b'2' as u16,
+    b'.' as u16, b'd' as u16, b'l' as u16, b'l' as u16, 0,
+];
+const DLL_OLE32: &[u16] = &[
+    b'o' as u16, b'l' as u16, b'e' as u16, b'3' as u16, b'2' as u16, b'.' as u16, b'd' as u16,
+    b'l' as u16, b'l' as u16, 0,
+];
+
+// Load `dll_utf16` (NUL-terminated UTF-16) and resolve `name` (a NUL-terminated
+// ASCII byte string, e.g. b"MessageBoxW\0"). Returns null if either step fails;
+// callers MUST null-check before transmuting.
+unsafe fn proc(dll_utf16: &[u16], name: &[u8]) -> *mut std::ffi::c_void {
+    let h = LoadLibraryW(dll_utf16.as_ptr());
+    if h.is_null() {
+        return ptr::null_mut();
+    }
+    GetProcAddress(h, name.as_ptr())
 }
-#[link(name = "shell32", kind = "raw-dylib")]
-extern "system" {
-    fn SHBrowseForFolderW(lpbi: *mut BROWSEINFOW) -> PIDLIST_ABSOLUTE;
-    fn SHGetPathFromIDListW(pidl: PIDLIST_ABSOLUTE, pszPath: *mut u16) -> i32;
-    fn Shell_NotifyIconW(dwMessage: u32, lpdata: *mut NOTIFYICONDATAW) -> i32;
-}
-#[link(name = "ole32", kind = "raw-dylib")]
-extern "system" {
-    fn CoTaskMemFree(pv: *mut std::ffi::c_void);
-}
+
+// Concrete signatures of the Win32 entry points we transmute resolved procs to.
+type MessageBoxWFn = unsafe extern "system" fn(HWND, *const u16, *const u16, u32) -> i32;
+type GetFileNameWFn = unsafe extern "system" fn(*mut OPENFILENAMEW) -> i32;
+type ChooseColorWFn = unsafe extern "system" fn(*mut CHOOSECOLORW) -> i32;
+type SHBrowseForFolderWFn = unsafe extern "system" fn(*mut BROWSEINFOW) -> PIDLIST_ABSOLUTE;
+type SHGetPathFromIDListWFn = unsafe extern "system" fn(PIDLIST_ABSOLUTE, *mut u16) -> i32;
+type CoTaskMemFreeFn = unsafe extern "system" fn(*mut std::ffi::c_void);
 
 fn to_wstring(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain(once(0)).collect()
@@ -169,6 +219,20 @@ fn from_wstring(s: &[u16]) -> String {
     let len = s.iter().position(|&c| c == 0).unwrap_or(s.len());
     let os_string = OsString::from_wide(&s[..len]);
     os_string.to_string_lossy().into_owned()
+}
+
+// Resolve user32!MessageBoxW at runtime and call it. Returns `None` if the
+// proc can't be resolved (in which case callers fall back to their default
+// answer); otherwise `Some(returned IDxxx code)`.
+fn call_message_box_w(text: *const u16, caption: *const u16, utype: u32) -> Option<i32> {
+    unsafe {
+        let p = proc(DLL_USER32, b"MessageBoxW\0");
+        if p.is_null() {
+            return None;
+        }
+        let f: MessageBoxWFn = mem::transmute(p);
+        Some(f(ptr::null_mut(), text, caption, utype))
+    }
 }
 
 pub fn message_box_ok(msg_box: &MessageBox) {
@@ -186,14 +250,8 @@ pub fn message_box_ok(msg_box: &MessageBox) {
         MessageBoxIcon::Question => MB_ICONQUESTION,
     };
 
-    unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            w_message.as_ptr(),
-            w_title.as_ptr(),
-            MB_OK | icon_flag,
-        );
-    }
+    // No return value: if MessageBoxW can't be resolved we simply show nothing.
+    let _ = call_message_box_w(w_message.as_ptr(), w_title.as_ptr(), MB_OK | icon_flag);
 }
 
 pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCancel {
@@ -216,13 +274,13 @@ pub fn message_box_ok_cancel(msg_box: &MessageBox, default: OkCancel) -> OkCance
         OkCancel::Cancel => MB_DEFBUTTON2,
     };
 
-    let result = unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            w_message.as_ptr(),
-            w_title.as_ptr(),
-            MB_OKCANCEL | icon_flag | default_button,
-        )
+    let result = match call_message_box_w(
+        w_message.as_ptr(),
+        w_title.as_ptr(),
+        MB_OKCANCEL | icon_flag | default_button,
+    ) {
+        Some(r) => r,
+        None => return default,
     };
 
     match result {
@@ -251,13 +309,13 @@ pub fn message_box_yes_no(msg_box: &MessageBox, default: YesNo) -> YesNo {
         YesNo::No => MB_DEFBUTTON2,
     };
 
-    let result = unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            w_message.as_ptr(),
-            w_title.as_ptr(),
-            MB_YESNO | icon_flag | default_button,
-        )
+    let result = match call_message_box_w(
+        w_message.as_ptr(),
+        w_title.as_ptr(),
+        MB_YESNO | icon_flag | default_button,
+    ) {
+        Some(r) => r,
+        None => return default,
     };
 
     match result {
@@ -287,13 +345,13 @@ pub fn message_box_yes_no_cancel(msg_box: &MessageBox, default: YesNoCancel) -> 
         YesNoCancel::Cancel => MB_DEFBUTTON3,
     };
 
-    let result = unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            w_message.as_ptr(),
-            w_title.as_ptr(),
-            MB_YESNOCANCEL | icon_flag | default_button,
-        )
+    let result = match call_message_box_w(
+        w_message.as_ptr(),
+        w_title.as_ptr(),
+        MB_YESNOCANCEL | icon_flag | default_button,
+    ) {
+        Some(r) => r,
+        None => return default,
     };
 
     match result {
@@ -321,13 +379,13 @@ pub fn input_box(input: &InputBox) -> Option<String> {
     let w_title = to_wstring(&format!("{} - {}", title, msg_type));
     let w_message = to_wstring(&prompt);
 
-    let result = unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            w_message.as_ptr(),
-            w_title.as_ptr(),
-            MB_OKCANCEL | MB_ICONQUESTION,
-        )
+    let result = match call_message_box_w(
+        w_message.as_ptr(),
+        w_title.as_ptr(),
+        MB_OKCANCEL | MB_ICONQUESTION,
+    ) {
+        Some(r) => r,
+        None => return None,
     };
 
     match result {
@@ -384,7 +442,14 @@ pub fn save_file_dialog(dialog: &FileDialog) -> Option<String> {
     ofn.lpstrTitle = w_title.as_ptr();
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
-    let result = unsafe { GetSaveFileNameW(&mut ofn) };
+    let result = unsafe {
+        let p = proc(DLL_COMDLG32, b"GetSaveFileNameW\0");
+        if p.is_null() {
+            return None;
+        }
+        let f: GetFileNameWFn = mem::transmute(p);
+        f(&mut ofn)
+    };
 
     if result != 0 {
         Some(from_wstring(&buffer))
@@ -446,7 +511,14 @@ pub fn open_file_dialog(dialog: &FileDialog) -> Option<Vec<String>> {
         ofn.Flags |= OFN_ALLOWMULTISELECT;
     }
 
-    let result = unsafe { GetOpenFileNameW(&mut ofn) };
+    let result = unsafe {
+        let p = proc(DLL_COMDLG32, b"GetOpenFileNameW\0");
+        if p.is_null() {
+            return None;
+        }
+        let f: GetFileNameWFn = mem::transmute(p);
+        f(&mut ofn)
+    };
 
     if result != 0 {
         if allow_multi {
@@ -495,12 +567,35 @@ pub fn select_folder_dialog(dialog: &FileDialog) -> Option<String> {
     bi.lpszTitle = w_title.as_ptr();
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
-    let pidl = unsafe { SHBrowseForFolderW(&mut bi) };
+    let pidl = unsafe {
+        let p = proc(DLL_SHELL32, b"SHBrowseForFolderW\0");
+        if p.is_null() {
+            return None;
+        }
+        let f: SHBrowseForFolderWFn = mem::transmute(p);
+        f(&mut bi)
+    };
 
     if !pidl.is_null() {
         let mut buffer = vec![0u16; 260]; // MAX_PATH
-        let result = unsafe { SHGetPathFromIDListW(pidl, buffer.as_mut_ptr()) };
-        unsafe { CoTaskMemFree(pidl) };
+        let result = unsafe {
+            let p = proc(DLL_SHELL32, b"SHGetPathFromIDListW\0");
+            if p.is_null() {
+                return None;
+            }
+            let f: SHGetPathFromIDListWFn = mem::transmute(p);
+            f(pidl, buffer.as_mut_ptr())
+        };
+        // Free the PIDL with ole32!CoTaskMemFree. If it can't be resolved we
+        // just skip the free (a one-time tiny leak per cancelled dialog is far
+        // preferable to failing the dialog) and continue.
+        unsafe {
+            let p = proc(DLL_OLE32, b"CoTaskMemFree\0");
+            if !p.is_null() {
+                let f: CoTaskMemFreeFn = mem::transmute(p);
+                f(pidl);
+            }
+        }
 
         if result != 0 {
             Some(from_wstring(&buffer))
@@ -535,7 +630,14 @@ pub fn color_chooser_dialog(chooser: &ColorChooser) -> Option<(String, [u8; 3])>
     cc.lpCustColors = custom_colors.as_mut_ptr();
     cc.Flags = CC_RGBINIT | CC_FULLOPEN | CC_ANYCOLOR;
 
-    let result = unsafe { ChooseColorW(&mut cc) };
+    let result = unsafe {
+        let p = proc(DLL_COMDLG32, b"ChooseColorW\0");
+        if p.is_null() {
+            return None;
+        }
+        let f: ChooseColorWFn = mem::transmute(p);
+        f(&mut cc)
+    };
 
     if result != 0 {
         let r = (cc.rgbResult & 0xFF) as u8;
@@ -574,16 +676,10 @@ fn show_legacy_notification(notification: &Notification) -> bool {
     let title = to_wstring(notification.title());
     let message = to_wstring(notification.message());
     
-    let result = unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            message.as_ptr(),
-            title.as_ptr(),
-            MB_OK | MB_ICONINFORMATION,
-        )
-    };
-    
-    result == IDOK
+    match call_message_box_w(message.as_ptr(), title.as_ptr(), MB_OK | MB_ICONINFORMATION) {
+        Some(r) => r == IDOK,
+        None => false,
+    }
 }
 
 /*
